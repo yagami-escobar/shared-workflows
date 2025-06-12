@@ -90,7 +90,7 @@ jobs:
 
       - name: Rollot History
         run: |
-          kubectl rollout history deployment/${{ inputs.deployment-name }} -n ${{ inputs.namespace }} --timeout=1m
+          kubectl rollout history deployment/${{ inputs.deployment-name }} -n ${{ inputs.namespace }}
 
       - name: Kubectl get deploy
         run: |
