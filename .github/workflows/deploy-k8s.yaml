@@ -1,43 +1,29 @@
 name: Deploy to Kubernetes Reusable
 
 on:
-  # El trigger 'workflow_call' indica que este workflow puede ser invocado por otros.
   workflow_call:
-    # Definimos los 'inputs' que este workflow espera recibir.
     inputs:
       image:
-        description: 'La imagen Docker completa a desplegar (ej. ghcr.io/org/repo/mi-imagen:tag)'
+        description: 'La imagen Docker completa a desplegar'
         required: true
         type: string
       deployment-name:
-        description: 'El nombre del Deployment de Kubernetes a crear o actualizar'
+        description: 'El nombre del Deployment de Kubernetes'
         required: true
         type: string
       namespace:
-        description: 'El Namespace de Kubernetes donde se realizará el despliegue'
+        description: 'El Namespace de Kubernetes'
         required: true
         type: string
       container-port:
-        description: 'El puerto que expone el contenedor en el Deployment'
+        description: 'El puerto que expone el contenedor'
         required: false
         type: number
-        default: 80 # Puerto por defecto para aplicaciones web
-
-    # Definimos los 'secrets' que este workflow necesita.
-    # El valor real de este secreto se pasará desde el workflow que lo invoca.
-    # secrets:
-    #   KUBECONFIG:
-    #     description: 'El contenido base64 del archivo KUBECONFIG para autenticarse con el clúster de Kubernetes'
-    #     required: true
+        default: 80
 
 jobs:
   deploy_to_kubernetes:
-    strategy:
-      matrix:
-        runner: ["ubuntu-latest", "blacksmith-4vcpu-ubuntu-2404"]
-      fail-fast: false  # Permite que los jobs continúen incluso si uno falla
-    
-    runs-on: ${{ matrix.runner }}
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
@@ -46,33 +32,22 @@ jobs:
       - name: Install kubectl
         uses: azure/setup-kubectl@v3
         with:
-          version: 'v1.28.0' # Puedes especificar la versión de kubectl que prefieras
-          
+          version: 'v1.28.0'
+
       - name: Install kind
         run: |
-          curl -Lo ./kind https://kind.sigs.k8s.io/dl/v.0.22.0/kind-linux-amd64
+          curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.22.0/kind-linux-amd64
           chmod +x ./kind
           sudo mv -v ./kind /usr/local/bin/kind
-      
+
       - name: Create Kind Cluster
         run: |
-          kind create cluster  --name yagami-cluster
+          kind create cluster --name yagami-cluster
           kubectl cluster-info --context kind-yagami-cluster
 
       - name: Show Kubeconfig
         run: |
           echo "$KUBECONFIG"
-
-      # - name: Set up Kubernetes configuration
-      #   run: |
-      #     # Crea el directorio .kube si no existe
-      #     mkdir -p ~/.kube
-      #     # Decodifica el secreto KUBECONFIG (que debe estar en base64) y lo guarda en el archivo de configuración
-      #     echo "${{ secrets.KUBECONFIG }}" | base64 -d > ~/.kube/config
-      #     # Establece permisos seguros para el archivo de configuración
-      #     chmod 600 ~/.kube/config
-        # Nota: Algunos KUBECONFIGs no están en base64 por defecto. Si el tuyo no lo está,
-        # quita el `| base64 -d` y asegúrate de que el secreto sea el contenido sin codificar.
 
       - name: Create Kubernetes Deployment manifest
         id: generate_manifest
@@ -86,7 +61,7 @@ jobs:
             labels:
               app: ${{ inputs.deployment-name }}
           spec:
-            replicas: 1 # Puedes hacer esto un input si quieres controlarlo
+            replicas: 1
             selector:
               matchLabels:
                 app: ${{ inputs.deployment-name }}
@@ -102,15 +77,13 @@ jobs:
                   - containerPort: ${{ inputs.container-port }}
           EOF
           echo "::notice file=deployment.yaml::Generated Deployment manifest."
-          cat deployment.yaml # Opcional: para ver el manifiesto generado en los logs
+          cat deployment.yaml
 
       - name: Apply Kubernetes manifest
         run: |
           kubectl apply -f deployment.yaml -n ${{ inputs.namespace }}
           echo "::notice::Deployment ${{ inputs.deployment-name }} applied successfully in namespace ${{ inputs.namespace }} with image ${{ inputs.image }}"
 
-      - name: Wait for Deployment rollout (optional)
+      - name: Wait for Deployment rollout
         run: |
           kubectl rollout status deployment/${{ inputs.deployment-name }} -n ${{ inputs.namespace }} --timeout=5m
-        # Este paso es útil para esperar a que el despliegue se complete antes de continuar.
-        # Puedes ajustar el --timeout según tus necesidades.
